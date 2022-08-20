@@ -29,7 +29,7 @@ interface CookieValue {
   csrfToken: string;
 }
 
-class Request {
+class LinkedIn {
   user!: { username: string; password: string };
   request!: AxiosInstance;
   LINKEDIN_BASE_URL = "https://www.linkedin.com";
@@ -340,4 +340,4 @@ class Request {
   }
 }
 
-export default Request;
+export default LinkedIn;

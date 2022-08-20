@@ -1,5 +1,5 @@
 import { program } from "commander";
-import Request from "../lib/request";
+import LinkedIn from "../lib/linkedin";
 import { int } from "../lib/utils";
 
 (async () => {
@@ -25,7 +25,7 @@ import { int } from "../lib/utils";
 
     if (!opts.username && !opts.password) return program.help();
 
-    const client = new Request(opts.username, opts.password);
+    const client = new LinkedIn(opts.username, opts.password);
     console.log(`> initializing...`);
     await client.init();
 
