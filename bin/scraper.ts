@@ -10,7 +10,8 @@ import { int } from "../lib/utils";
       .option("-P, --password <password>", "LinkedIn account password")
       .option("--limit [number]", "Public post search limit", int, 50)
       .option("--min [number]", "Video minimum duration in seconds", int, 2)
-      .option("--max [number]", "Video maximum duration in seconds", int, 30);
+      .option("--max [number]", "Video maximum duration in seconds", int, 30)
+      .option("--data-dir [path]", "Data directory path", "./data");
     await program.parseAsync();
 
     const opts = program.opts<{
@@ -20,11 +21,12 @@ import { int } from "../lib/utils";
       limit: number;
       min: number;
       max: number;
+      dataDir: string;
     }>();
 
     if (!opts.username && !opts.password) return program.help();
 
-    const client = new LinkedIn(opts.username, opts.password);
+    const client = new LinkedIn(opts.username, opts.password, opts.dataDir);
     console.log(`> initializing...`);
     await client.init();
 

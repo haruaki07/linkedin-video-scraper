@@ -41,11 +41,15 @@ class LinkedIn {
   CSRF_TOKEN?: string;
   COOKIES?: string;
   MAX_SEARCH_COUNT = 49;
-  DATA_DIR = "./data";
-  COOKIE_FILE_PATH = `${this.DATA_DIR}/cookie.json`;
-  DOWNLOADS_DIR = `${this.DATA_DIR}/downloads`;
+  DATA_DIR!: string;
+  COOKIE_FILE_PATH!: string;
+  DOWNLOADS_DIR!: string;
 
-  constructor(username: string, password: string) {
+  constructor(username: string, password: string, dataDir = "./data") {
+    this.DATA_DIR = dataDir;
+    this.COOKIE_FILE_PATH = `${this.DATA_DIR}/cookie.json`;
+    this.DOWNLOADS_DIR = `${this.DATA_DIR}/downloads`;
+
     this.user = { username, password };
     this.initAxios();
   }
