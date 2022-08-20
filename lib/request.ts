@@ -270,6 +270,9 @@ class Request {
     this.COOKIES = _cookies.join("; ");
   }
 
+  /**
+   * Load cookie from saved cookie file
+   */
   private async loadCookiesFromFile() {
     const cookieValues = JSON.parse(
       await fs.readFile(this.COOKIE_FILE_PATH, { encoding: "utf-8" })
@@ -294,30 +297,30 @@ class Request {
         const cookies = setCookie(res.headers["set-cookie"], { map: true });
         if ((cookies.JSESSIONID || cookies.li_at) && this.user) {
           this.setCookies(cookies);
+          // strip double quotes
           this.CSRF_TOKEN = cookies.JSESSIONID.value.replace(/\"/g, "");
 
           let cookieValues: CookieValue[] = [];
+          const currentCookie = {
+            username: this.user.username,
+            cookies: this.COOKIES!,
+            csrfToken: this.CSRF_TOKEN!,
+          };
 
           try {
+            // load and parse from file
             cookieValues = JSON.parse(
               await fs.readFile(this.COOKIE_FILE_PATH, { encoding: "utf-8" })
             );
-            cookieValues = cookieValues.map((c) => {
-              if (c.username === this.user?.username) {
-                c = {
-                  username: this.user?.username!,
-                  cookies: this.COOKIES!,
-                  csrfToken: this.CSRF_TOKEN!,
-                };
-              }
-              return c;
-            });
+            const cookieIdx = cookieValues.findIndex(
+              (c) => c.username === this.user.username
+            );
+            // add if doesn't exist, see the catch block
+            if (cookieIdx === -1) throw void 0;
+
+            cookieValues[cookieIdx] = currentCookie;
           } catch {
-            cookieValues.push({
-              username: this.user?.username,
-              cookies: this.COOKIES!,
-              csrfToken: this.CSRF_TOKEN!,
-            });
+            cookieValues.push(currentCookie);
           }
 
           await fs.writeFile(
