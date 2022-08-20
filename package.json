@@ -1,23 +1,11 @@
 {
   "name": "linkedin-video-scraper",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "main": "dist/lib/linkedin.js",
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
     "start": "tsc && node dist/bin/scraper"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/haruaki07/linkedin-video-scraper.git"
-  },
-  "keywords": [],
-  "author": "",
-  "bugs": {
-    "url": "https://github.com/haruaki07/linkedin-video-scraper/issues"
-  },
-  "homepage": "https://github.com/haruaki07/linkedin-video-scraper#readme",
   "dependencies": {
     "axios": "^0.27.2",
     "commander": "^9.4.0",
