@@ -21,6 +21,10 @@ interface SearchVideoOptions {
   keywords?: string;
   limit?: number;
   offset?: number;
+  duration: {
+    min: number;
+    max: number;
+  };
 }
 
 interface CookieValue {
@@ -62,6 +66,7 @@ class LinkedIn {
     keywords = "#video",
     limit = -1,
     offset = 0,
+    duration,
   }: SearchVideoOptions) {
     let count = +(params?.count ?? this.MAX_SEARCH_COUNT);
     const results: PostEntity[] = [];
@@ -110,7 +115,9 @@ class LinkedIn {
 
         console.log("downloading videos if available...");
         const result = await this.downloadVideoIfExist(
-          posts.map((ent) => ent.targetUnion.updateV2Urn)
+          posts.map((ent) => ent.targetUnion.updateV2Urn),
+          duration.min,
+          duration.max
         );
         downloaded +=
           result?.filter((r) => r.status === "fulfilled").length ?? 0;
@@ -139,7 +146,7 @@ class LinkedIn {
   /**
    * @param urn an array of updateV2 urn string
    */
-  private async downloadVideoIfExist(urn: string[]) {
+  private async downloadVideoIfExist(urn: string[], min: number, max: number) {
     try {
       const ids = `List(${urn.map(this.encodeURI).join(",")})`;
       const res = await this.request.get(`/feed/updatesV2?ids=${ids}`, {
@@ -165,7 +172,7 @@ class LinkedIn {
           return new Promise<string>(async (resolv, reject) => {
             const durationInSec = Math.floor(ent.duration / 1000);
 
-            if (durationInSec < 2 || durationInSec > 30) {
+            if (durationInSec < min || durationInSec > max) {
               console.log(`duration: ${durationInSec}s, skipped...`);
               return reject(new Error("invalid duration"));
             }
@@ -224,10 +231,19 @@ class LinkedIn {
       });
     } catch (e) {
       if (e instanceof AxiosError) {
-        if (e.response?.data.login_result === "CHALLENGE") {
-          console.log("linkedin challenge error...");
+        switch (e.response?.data.login_result) {
+          case "CHALLENGE":
+            console.error("linkedin challenge error...");
+            break;
+          case "BAD_PASSWORD":
+          case "BAD_EMAIL":
+            console.error("invalid credentials...");
+            break;
         }
+      } else {
+        console.error("an error occurred while authenticathing: ", e);
       }
+      process.exit(1);
     }
   }
 
@@ -240,6 +256,10 @@ class LinkedIn {
 
   async getSessionCookies() {
     const res = await this.request.get("uas/authenticate");
+    const cookies = setCookie(res.headers["set-cookie"]!, { map: true });
+    this.setCookies(cookies);
+    // strip double quotes
+    this.CSRF_TOKEN = cookies.JSESSIONID.value.replace(/\"/g, "");
   }
 
   private setCookies(cookies: CookieMap) {
@@ -279,7 +299,7 @@ class LinkedIn {
     this.request.interceptors.response.use(async (res) => {
       if (res.headers["set-cookie"]) {
         const cookies = setCookie(res.headers["set-cookie"], { map: true });
-        if ((cookies.JSESSIONID || cookies.li_at) && this.user) {
+        if (cookies.JSESSIONID && cookies.li_at) {
           this.setCookies(cookies);
           // strip double quotes
           this.CSRF_TOKEN = cookies.JSESSIONID.value.replace(/\"/g, "");

@@ -11,6 +11,7 @@ import { int } from "../lib/utils";
       )
       .option("-U, --username <username>", "LinkedIn account username or email")
       .option("-P, --password <password>", "LinkedIn account password")
+      .option("--limit [number]", "Public post search limit", int, 50)
       .option("--min [number]", "Video minimum duration in seconds", int, 2)
       .option("--max [number]", "Video maximum duration in seconds", int, 30);
     await program.parseAsync();
@@ -19,6 +20,7 @@ import { int } from "../lib/utils";
       keywords: string;
       username: string;
       password: string;
+      limit: number;
       min: number;
       max: number;
     }>();
@@ -28,13 +30,16 @@ import { int } from "../lib/utils";
     const client = new LinkedIn(opts.username, opts.password);
     console.log(`> initializing...`);
     await client.init();
+    // return;
 
     console.log("> searching videos...");
     const { fetched, downloaded } = await client.searchVideos({
       params: {
         count: "5",
       },
-      limit: 20,
+      ...(opts.keywords ? { keywords: opts.keywords } : {}),
+      limit: opts.limit,
+      duration: { min: opts.min, max: opts.max },
     });
 
     console.log(`> fetched ${fetched} posts`);
