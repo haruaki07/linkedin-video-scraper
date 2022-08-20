@@ -222,8 +222,6 @@ class Request {
           Cookie: this.COOKIES!,
         },
       });
-
-      this.setCookiesFromRequestHeader(res.headers["set-cookie"]);
     } catch (e) {
       if (e instanceof AxiosError) {
         if (e.response?.data.login_result === "CHALLENGE") {
@@ -242,20 +240,6 @@ class Request {
 
   async getSessionCookies() {
     const res = await this.request.get("uas/authenticate");
-  }
-
-  private setCookiesFromRequestHeader(value: string[] | undefined) {
-    const cookies = setCookie.parse(value!, {
-      map: true,
-    });
-
-    this.setCookies(cookies);
-
-    if ("JSESSIONID" in cookies) {
-      // JSESSIONID value is "ajax:123103930931"
-      // we need to strip the double quotes
-      this.CSRF_TOKEN = cookies.JSESSIONID.value.replace(/\"/g, "");
-    }
   }
 
   private setCookies(cookies: CookieMap) {
