@@ -63,7 +63,7 @@ class LinkedIn {
 
   async searchVideos({
     params,
-    keywords = "#video",
+    keywords,
     limit = -1,
     offset = 0,
     duration,

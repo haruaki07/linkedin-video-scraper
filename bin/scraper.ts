@@ -5,10 +5,7 @@ import { int } from "../lib/utils";
 (async () => {
   try {
     program
-      .option(
-        "-k, --keywords [keywords]",
-        "Keywords to search (default: #video)"
-      )
+      .option("-k, --keywords [keywords]", "Keywords to search", "#video")
       .option("-U, --username <username>", "LinkedIn account username or email")
       .option("-P, --password <password>", "LinkedIn account password")
       .option("--limit [number]", "Public post search limit", int, 50)
@@ -30,9 +27,10 @@ import { int } from "../lib/utils";
     const client = new LinkedIn(opts.username, opts.password);
     console.log(`> initializing...`);
     await client.init();
-    // return;
 
-    console.log("> searching videos...");
+    console.log(
+      `> searching ${opts.min}-${opts.max}s videos with keywords "${opts.keywords}"`
+    );
     const { fetched, downloaded } = await client.searchVideos({
       params: {
         count: "5",
