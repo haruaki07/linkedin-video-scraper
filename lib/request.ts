@@ -2,13 +2,7 @@ import axios, { AxiosError, AxiosInstance, AxiosResponse } from "axios";
 import setCookie, { CookieMap } from "set-cookie-parser";
 import cookie from "cookie";
 import fs from "fs/promises";
-import {
-  createWriteStream,
-  mkdirSync,
-  existsSync,
-  unlinkSync,
-  ReadStream,
-} from "fs";
+import { constants, createWriteStream, unlinkSync, ReadStream } from "fs";
 import { v4 } from "uuid";
 import { PostEntity } from "../types/post-entity";
 import { PostUpdatesV2MediaEntity } from "../types/post-updatesv2-entity";
@@ -29,7 +23,14 @@ interface SearchVideoOptions {
   offset?: number;
 }
 
+interface CookieValue {
+  username: string;
+  cookies: string;
+  csrfToken: string;
+}
+
 class Request {
+  user!: { username: string; password: string };
   request!: AxiosInstance;
   LINKEDIN_BASE_URL = "https://www.linkedin.com";
   LINKEDIN_API_BASE_URL = `${this.LINKEDIN_BASE_URL}/voyager/api`;
@@ -37,12 +38,23 @@ class Request {
   COOKIES?: string;
   MAX_SEARCH_COUNT = 49;
   DATA_DIR = "./data";
-  COOKIE_FILE_PATH = `${this.DATA_DIR}/cookie`;
-  DOWNLOADS_DIR = "./downloads";
+  COOKIE_FILE_PATH = `${this.DATA_DIR}/cookie.json`;
+  DOWNLOADS_DIR = `${this.DATA_DIR}/downloads`;
 
-  constructor() {
+  constructor(username: string, password: string) {
+    this.user = { username, password };
     this.initAxios();
-    if (!existsSync(this.DOWNLOADS_DIR)) mkdirSync(this.DOWNLOADS_DIR);
+  }
+
+  async init() {
+    await this.ensureDataDir();
+    try {
+      await this.loadCookiesFromFile();
+    } catch (e) {
+      console.log("authenticating...");
+      await this.getSessionCookies();
+      await this.authenticate();
+    }
   }
 
   async searchVideos({
@@ -77,16 +89,17 @@ class Request {
       );
 
       try {
-        const res = (await this.request.get(`/search/dash/clusters`, {
-          baseURL: this.LINKEDIN_API_BASE_URL,
-          params: requestParams,
-          headers: {
-            Accept: "application/vnd.linkedin.normalized+json+2.1",
-            "x-restli-protocol-version": "2.0.0",
-            cookie: this.COOKIES!,
-            "csrf-token": this.CSRF_TOKEN!,
-          },
-        })) as AxiosResponse<{ data: any; included: PostEntity[] }>;
+        const res: AxiosResponse<{ data: any; included: PostEntity[] }> =
+          await this.request.get(`/search/dash/clusters`, {
+            baseURL: this.LINKEDIN_API_BASE_URL,
+            params: requestParams,
+            headers: {
+              Accept: "application/vnd.linkedin.normalized+json+2.1",
+              "x-restli-protocol-version": "2.0.0",
+              cookie: this.COOKIES!,
+              "csrf-token": this.CSRF_TOKEN!,
+            },
+          });
 
         const posts = res.data.included.filter(
           (ent) => "entityEmbeddedObject" in ent
@@ -175,7 +188,9 @@ class Request {
 
             file.on("finish", () => {
               file.close();
-              console.log(`file: ${fileName}, duration: ${durationInSec}s`);
+              console.log(
+                `downloaded! file: ${fileName}, duration: ${durationInSec}s`
+              );
               resolv(fileName);
             });
           });
@@ -186,7 +201,8 @@ class Request {
     }
   }
 
-  async authenticate(username: string, password: string) {
+  async authenticate() {
+    const { username, password } = this.user!;
     const payload = new URLSearchParams({
       session_key: username,
       session_password: password,
@@ -219,9 +235,13 @@ class Request {
 
   async doAuthChallenge() {}
 
+  async ensureDataDir() {
+    await this.ensureDir(this.DATA_DIR);
+    await this.ensureDir(this.DOWNLOADS_DIR);
+  }
+
   async getSessionCookies() {
     const res = await this.request.get("uas/authenticate");
-    this.setCookiesFromRequestHeader(res.headers["set-cookie"]);
   }
 
   private setCookiesFromRequestHeader(value: string[] | undefined) {
@@ -250,16 +270,86 @@ class Request {
     this.COOKIES = _cookies.join("; ");
   }
 
+  private async loadCookiesFromFile() {
+    const cookieValues = JSON.parse(
+      await fs.readFile(this.COOKIE_FILE_PATH, { encoding: "utf-8" })
+    ) as CookieValue[];
+    const cookie = cookieValues.find((c) => c.username === this.user?.username);
+    if (!cookie) throw new Error("cookie not available");
+    this.CSRF_TOKEN = cookie.csrfToken;
+    this.COOKIES = cookie.cookies;
+  }
+
+  /**
+   * Initialize axios instance
+   */
   private initAxios() {
     this.request = axios.create({
       baseURL: this.LINKEDIN_BASE_URL,
     });
+
+    // save cookie after request call
+    this.request.interceptors.response.use(async (res) => {
+      if (res.headers["set-cookie"]) {
+        const cookies = setCookie(res.headers["set-cookie"], { map: true });
+        if ((cookies.JSESSIONID || cookies.li_at) && this.user) {
+          this.setCookies(cookies);
+          this.CSRF_TOKEN = cookies.JSESSIONID.value.replace(/\"/g, "");
+
+          let cookieValues: CookieValue[] = [];
+
+          try {
+            cookieValues = JSON.parse(
+              await fs.readFile(this.COOKIE_FILE_PATH, { encoding: "utf-8" })
+            );
+            cookieValues = cookieValues.map((c) => {
+              if (c.username === this.user?.username) {
+                c = {
+                  username: this.user?.username!,
+                  cookies: this.COOKIES!,
+                  csrfToken: this.CSRF_TOKEN!,
+                };
+              }
+              return c;
+            });
+          } catch {
+            cookieValues.push({
+              username: this.user?.username,
+              cookies: this.COOKIES!,
+              csrfToken: this.CSRF_TOKEN!,
+            });
+          }
+
+          await fs.writeFile(
+            this.COOKIE_FILE_PATH,
+            JSON.stringify(cookieValues),
+            { encoding: "utf-8" }
+          );
+        }
+      }
+      return res;
+    });
   }
 
+  /**
+   * encodeUriComponent, but with !'()* included
+   */
   private encodeURI(str: string) {
     return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
       return "%" + c.charCodeAt(0).toString(16);
     });
+  }
+
+  /**
+   * Ensures that the directory exists.
+   * If the directory structure does not exist, it is created.
+   */
+  async ensureDir(path: string) {
+    try {
+      await fs.access(path, constants.F_OK);
+    } catch {
+      await fs.mkdir(path);
+    }
   }
 }
 

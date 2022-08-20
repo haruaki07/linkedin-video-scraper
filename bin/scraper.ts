@@ -25,11 +25,9 @@ import { int } from "../lib/utils";
 
     if (!opts.username && !opts.password) return program.help();
 
-    const client = new Request();
-
-    await client.getSessionCookies();
-    console.log("> authenticating...");
-    await client.authenticate(opts.username, opts.password);
+    const client = new Request(opts.username, opts.password);
+    console.log(`> initializing...`);
+    await client.init();
 
     console.log("> searching videos...");
     const { fetched, downloaded } = await client.searchVideos({
