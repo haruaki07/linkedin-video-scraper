@@ -6,6 +6,9 @@ import { constants, createWriteStream, unlinkSync, ReadStream } from "fs";
 import { v4 } from "uuid";
 import { PostEntity } from "../types/post-entity";
 import { PostUpdatesV2MediaEntity } from "../types/post-updatesv2-entity";
+import * as cheerio from "cheerio";
+import { CookieJar } from "tough-cookie";
+import { wrapper } from "axios-cookiejar-support";
 
 export interface SearchParams {
   decorationId: string;
@@ -237,21 +240,67 @@ class LinkedIn {
       if (e instanceof AxiosError) {
         switch (e.response?.data.login_result) {
           case "CHALLENGE":
-            console.error("linkedin challenge error...");
-            break;
+            throw new LinkedInChallengeError("linkedin challenge error");
           case "BAD_PASSWORD":
           case "BAD_EMAIL":
-            console.error("invalid credentials...");
-            break;
+            throw new InvalidCredentialsError("invalid credentials");
         }
-      } else {
-        console.error("an error occurred while authenticathing: ", e);
+      } else if (e instanceof Error) {
+        e.message = `an error occurred while authenticating: ${e.message}`;
+        throw e;
       }
-      process.exit(1);
     }
   }
 
-  async doAuthChallenge() {}
+  async doAuthChallenge(onPin: () => Promise<string>) {
+    const SEED_URL = "https://www.linkedin.com/uas/login";
+    const LOGIN_URL = "https://www.linkedin.com/checkpoint/lg/login-submit";
+    const VERIFY_URL = "https://www.linkedin.com/checkpoint/challenge/verify";
+
+    let $: cheerio.CheerioAPI;
+    const jar = new CookieJar();
+    const http = wrapper(
+      axios.create({
+        responseType: "text",
+        headers: {
+          "User-Agent": "LinkedIn/8.8.1 CFNetwork/711.3.18 Darwin/14.0.0",
+        },
+        jar,
+      })
+    );
+
+    const seedRes = await http.get(SEED_URL);
+    $ = cheerio.load(seedRes.data);
+    const loginCsrfParam = $(`input[name="loginCsrfParam"]`).val() as string;
+
+    const loginRes = await http.post(
+      LOGIN_URL,
+      new URLSearchParams({
+        session_key: "kvsouw@gmail.com",
+        loginCsrfParam,
+        session_password: "Misbahul123@",
+      })
+    );
+    $ = cheerio.load(loginRes.data);
+
+    const url = new URL(loginRes.request.res.responseUrl);
+    if (!/^\/checkpoint\/challenge\/[a-zA-Z0-9_\-]+/.test(url.pathname)) {
+      throw new Error("login failed");
+    }
+
+    const inputs = $("form#email-pin-challenge input").toArray();
+    const payload = new URLSearchParams();
+
+    inputs.forEach((el) => {
+      payload.set(el.attribs["name"], el.attribs["value"]);
+    });
+
+    const pin = await onPin();
+    payload.set("pin", pin);
+
+    const verifyRes = await http.post(VERIFY_URL, payload);
+    $ = cheerio.load(verifyRes.data);
+  }
 
   async ensureDataDir() {
     await this.ensureDir(this.DATA_DIR);
@@ -363,5 +412,9 @@ class LinkedIn {
     }
   }
 }
+
+export class InvalidCredentialsError extends Error {}
+
+export class LinkedInChallengeError extends Error {}
 
 export default LinkedIn;

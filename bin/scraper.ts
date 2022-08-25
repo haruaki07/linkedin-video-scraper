@@ -1,6 +1,7 @@
 import { program } from "commander";
-import LinkedIn from "../lib/linkedin";
+import LinkedIn, { LinkedInChallengeError } from "../lib/linkedin";
 import { int } from "../lib/utils";
+import { prompt } from "enquirer";
 
 (async () => {
   try {
@@ -28,7 +29,20 @@ import { int } from "../lib/utils";
 
     const client = new LinkedIn(opts.username, opts.password, opts.dataDir);
     console.log(`> initializing...`);
-    await client.init();
+    try {
+      await client.init();
+    } catch (e) {
+      if (!(e instanceof LinkedInChallengeError)) throw e;
+      await client.doAuthChallenge(() => {
+        return prompt<{ pin: string }>({
+          type: "input",
+          name: "pin",
+          message:
+            "LinkedIn will send you emails, check them and enter the PIN",
+        }).then((r) => r.pin);
+      });
+      process.exit();
+    }
 
     console.log(
       `> searching ${opts.min}-${opts.max}s videos with keywords "${opts.keywords}"`
